@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+
+<title> Image Clustering </title>
+<meta charset="utf-8"/>
+<p id="g1"></p>
+<link href="http://fonts.googleapis.com/css?family=Lato:400,700" rel="stylesheet" type="text/css"/>
+<head>
+<style>
+
+rect {
+  fill: transparent;
+  shape-rendering: crispEdges;
+}
+
+
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.1);
+  shape-rendering: crispEdges;
+}
+
+.axisLine {
+  fill: none;
+  shape-rendering: crispEdges;
+  stroke: rgba(0, 0, 0, 0.5);
+  stroke-width: 2px;
+}
+
+.dot {
+  fill-opacity: .5;
+}
+
+.d3-tip {
+  line-height: 1;
+  font-weight: bold;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  border-radius: 2px;
+}
+
+/* Creates a small triangle extender for the tooltip */
+.d3-tip:after {
+  box-sizing: border-box;
+  display: inline;
+  font-size: 10px;
+  width: 100%;
+  line-height: 1;
+  color: rgba(0, 0, 0, 0.8);
+  content: "\25BC";
+  position: absolute;
+  text-align: center;
+}
+
+/* Style northward tooltips differently */
+.d3-tip.n:after {
+  margin: -1px 0 0 0;
+  top: 100%;
+  left: 0;
+}
+    </style>
+
+</head>
+<img class="manImg" id="imgHREF" src=""/>
+<div id="audiencePlaceholder"> </div>
+<body>
+<div id="scatter"></div>
+<script src="https://d3js.org/d3.v4.js"></script>
+<script src="https://rawgit.com/susielu/d3-annotation/master/d3-annotation.min.js"></script>
+<script src="http://labratrevenge.com/d3-tip/javascripts/d3.tip.v0.6.3.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+</body>
+<script>
+
+
+var margin = { top: 10, right: 20, bottom: 10, left: 20 },
+    outerWidth = window.innerWidth,
+    outerHeight = window.innerHeight,
+    width = outerWidth - margin.left - margin.right,
+    height = outerHeight - margin.top - margin.bottom;
+
+var x = d3.scaleLinear()
+    .range([0, width]).nice();
+
+var y = d3.scaleLinear()
+    .range([height, 0]).nice();
+
+var xCat = "X",
+    yCat = "Y";
+
+d3.csv("data.csv", function(data) {
+  data.forEach(function(d) {
+    d.X = +d.X;
+    d.Y = +d.Y;
+    d.URL = d.URL;
+    d.labels = d.labels;
+  });
+
+
+  var filteredData = data.filter(function(d) 
+{ 
+
+        if(d.labels != -1)
+        { 
+            return d;
+        } 
+
+    });
+
+
+    color = d3.scaleOrdinal()
+    .domain(function(d) { return d.labels; })
+    .range(["rgb(6,150,104)", "rgb(52,222,187)", "rgb(7,77,101)", "rgb(141,235,113)", "rgb(27,81,29)", "rgb(145,206,244)", "rgb(27,77,171)", "rgb(218,115,248)", "rgb(104,55,79)", "rgb(223,187,227)", "rgb(116,22,142)", "rgb(202,219,165)", "rgb(122,48,3)", "rgb(234,214,36)", "rgb(32,142,183)", "rgb(52,245,14)", "rgb(183,13,97)", "rgb(101,161,14)", "rgb(192,0,24)", "rgb(246,166,121)", "rgb(124,136,105)", "rgb(255,107,151)", "rgb(63,22,249)", "rgb(101,139,251)", "rgb(166,116,149)", "rgb(242,49,252)"]);
+
+  var xMax = d3.max(data, function(d) { return d[xCat]; }) * 1.15,
+      xMin = d3.min(data, function(d) { return d[xCat]; }),
+      yMax = d3.max(data, function(d) { return d[yCat]; }) * 1.15
+      yMin = d3.min(data, function(d) { return d[yCat]; });
+
+  x.domain([xMin, xMax]);
+  y.domain([yMin, yMax]);
+
+  var xAxis = d3.axisBottom()
+      .scale(x);
+
+  var yAxis = d3.axisLeft()
+      .scale(y);
+
+  var svg = d3.select("#scatter")
+      .append("svg")
+      .attr("width", outerWidth)
+      .attr("height", outerHeight)
+      .call(d3.zoom().on("zoom", function () {svg.attr("transform", d3.event.transform)}))
+      .append("g")
+      .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+
+   var valueline = d3.line()
+      .x(function(d) { return d[0]; })
+      .y(function(d) { return d[1]; })
+      .curve(d3.curveCatmullRomClosed),
+    paths,
+    groups,
+    groupIds,
+    scaleFactor = 1.2,
+    polygon,
+    centroid,
+    node,
+    link,
+    curveTypes = ['curveBasisClosed', 'curveCardinalClosed', 'curveCatmullRomClosed', 'curveLinearClosed'],
+    simulation = d3.forceSimulation()
+      .force('link', d3.forceLink().id(function(d) { return d.labels; }))
+      .force('charge', d3.forceManyBody())
+      .force('center', d3.forceCenter(width / 2, height / 2));
+
+       // count members of each group. Groups with less
+  // than 3 member will not be considered (creating
+  // a convex hull need 3 points at least)
+  groupIds = d3.set(filteredData.map(function(n) { return +n.labels; }))
+    .values()
+    .map( function(groupId) {
+      return { 
+        groupId : groupId,
+        count : data.filter(function(n) { return +n.labels == groupId; }).length
+      };
+    })
+    .filter( function(group) { return group.count > 2;})
+    .map( function(group) { return group.groupId; });
+
+
+  svg.append("rect")
+      .attr("width", width)
+      .attr("height", height);
+
+  var objects = svg.append("svg")
+      .classed("objects", true)
+      .attr("width", width)
+      .attr("height", height);
+
+ var images =  objects.selectAll(".dot")
+      .data(data)
+      .enter().append("image")
+      .attr("class", "overallG")
+      .attr("id", function(d) { return ('img' + d.URL); })
+      .attr("xlink:href", function(d) {return 'images/' + d.URL})
+      .attr("width", "5px").attr("height", "5px")
+      .attr("transform", transform);
+
+
+      paths = objects.selectAll('.path_placeholder')
+    .data(groupIds, function(d) { return +d; })
+    .enter()
+    .append('g')
+    .attr('class', 'path_placeholder')
+    .append('path')
+    .attr("id", function(d) { return "path_" + d;})
+    .attr('stroke', function(d) { return color(d); })
+    .attr('fill', function(d) { return color(d); })
+    .attr("opacity", 0.15);
+
+
+    simulation
+      .nodes(data)
+      .on('tick', ticked);
+
+
+        function ticked() {
+    
+    updateGroups();
+
+  }
+
+
+    // select nodes of the group, retrieve its positions
+// and return the convex hull of the specified points
+// (3 points as minimum, otherwise returns null)
+
+var polygonGenerator = function(groupId) {
+  var node_coords = images
+    .filter(function(d) { return d.labels == parseInt(groupId); })
+    .data()
+    .map(function(d) { return [d.X, d.Y]; });
+    
+  return d3.polygonHull(node_coords);
+};
+
+
+function updateGroups() {
+  groupIds.forEach(function(groupId) {
+    var path = paths.filter(function(d) { return d == parseInt(groupId);})
+      .attr('transform', 'scale(1) translate(0,0)')
+      .attr('d', function(d) {
+        polygon = polygonGenerator(d);          
+        centroid = d3.polygonCentroid(polygon);
+
+        // to scale the shape properly around its points:
+        // move the 'g' element to the centroid point, translate
+        // all the path around the center of the 'g' and then
+        // we can scale the 'g' element properly
+        return valueline(
+          polygon.map(function(point) {
+            return [  x(point[0]) - x(centroid[0]), y(point[1]) - y(centroid[1]) ];
+          })
+        );
+      });
+
+    d3.select(path.node().parentNode).attr('transform', 'translate('  + x(centroid[0]) + ',' + y(centroid[1]) + ') scale(' + scaleFactor + ')');
+  });
+}
+
+
+  //$("#img1").get(0).scrollIntoView();
+
+
+  function zoom() {
+    svg.select(".x.axis").call(xAxis);
+    svg.select(".y.axis").call(yAxis);
+
+    svg.selectAll(".dot")
+        .attr("transform", transform);
+  }
+
+  function transform(d) {
+    return "translate(" + x(d[xCat]) + "," + y(d[yCat]) + ")";
+  }
+
+
+
+});
+
+    </script>
