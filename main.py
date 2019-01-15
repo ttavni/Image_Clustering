@@ -10,8 +10,8 @@ from copy_files import recursive_copy_files
 if __name__ == "__main__":
 
 	# DEPENDENCY
-	directory_of_images = 'fruits'
-	image_type = '.jpg'
+	directory_of_images = 'pokemon'
+	image_type = '.png'
 
 	# Find all images
 	relative_image_directory = 'images/{}/'.format(directory_of_images)
